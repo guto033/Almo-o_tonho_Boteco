@@ -158,7 +158,7 @@ const tt=x=>x.title||(x.mode=='grp'?'Grupo de '+x.name:x.name);
 function summary(){const t={};S.orders.forEach(x=>Object.entries(x.items||{}).forEach(([i,q])=>t[i]=(t[i]||0)+q));
  let s=`PEDIDO DE ALMOÇO — ${S.orders.reduce((a,x)=>a+heads(x),0)} pessoas\n\nTOTAL POR ITEM\n`;
  Object.entries(t).forEach(([i,q])=>s+=`${q}x ${IT[i]?IT[i].n:i}\n`);s+='\nPOR PEDIDO\n';
- S.orders.forEach(x=>{s+=`\n${tt(x)}${x.mode=='grp'?' ('+heads(x)+' pessoas)':''} — ${R(tot(x.items))}\n`;
+ S.orders.forEach(x=>{s+=`\n${tt(x)}${x.mode=='grp'?' ('+heads(x)+' pessoas)':''} — ${R(tot(x.items))}\n`+(x.mode=='grp'?` Integrantes: ${joinE((x.members||[]).filter(m=>m.trim()))}\n`:'');
   if(!isPP(x))s+=Object.entries(x.items||{}).map(([i,q])=>` - ${q}x ${IT[i]?IT[i].n:i}\n`).join('');
   s+=splitLines(x).map(l=>` - ${l}\n`).join('')+(x.note?` Obs: ${x.note}\n`:'')});
  return s}
@@ -172,9 +172,9 @@ function admin(){
  h+=`<div class="card"><div class="row"><b>Resumo para o restaurante</b><button class="lnk" data-a="copy">${I.copy} Copiar</button></div><pre id="sum">${esc(summary())}</pre><span id="cp" class="okt"></span></div><h3 class="hsm">Pedidos (${n})</h3><p class="mu sm pad" style="margin:4px 0 0">Exclua os pedidos que não devem entrar. O resumo e o PDF mostram só o que sobrar.</p>`;
  S.orders.forEach(x=>{const t=tot(x.items),hd=heads(x),g=x.mode=='grp';
   h+=`<div class="card"><div class="row"><span><b>${esc(x.name)}</b> <span class="mu sm">· ${g?'grupo de '+hd:'individual'}${x.at?' · '+new Date(x.at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</span></span><b>${R(t)}</b></div>`;
-  if(g)h+=`<div class="mu sm" style="margin-top:4px">${isPP(x)?'Cada um seus pratos':'Dividir igual · '+R(t/hd)+' cada'}</div>`;
+  if(g)h+=`<div class="mu sm" style="margin-top:4px">Integrantes: ${esc(joinE((x.members||[]).filter(m=>m.trim())))}</div><div class="mu sm">${isPP(x)?'Cada um seus pratos':'Dividir igual · '+R(t/hd)+' cada'}</div>`;
   if(isPP(x))h+=Object.entries(x.per).map(([p,it])=>`<div class="row it sm"><span>${esc(p)} <span class="mu">· ${esc(itTxt(it))}</span></span><span>${R(tot(it))}</span></div>`).join('');
-  else h+=`<div class="sm" style="margin-top:6px">${esc(itTxt(x.items))}</div>${g?`<div class="mu sm">Integrantes: ${esc(joinE((x.members||[]).filter(m=>m.trim())))}</div>`:''}`;
+  else h+=`<div class="sm" style="margin-top:6px">${esc(itTxt(x.items))}</div>`;
   h+=`${x.note?`<div class="mu sm" style="margin-top:4px">Obs: ${esc(x.note)}</div>`:''}<button class="btn dg" data-a="del" data-id="${x.id}">${I.trash} Excluir pedido</button></div>`});
  return h+`<div class="bar"><button class="btn p" data-a="pdf">${I.file} Gerar PDF</button></div>`;
 }
