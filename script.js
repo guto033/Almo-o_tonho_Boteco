@@ -148,12 +148,44 @@ function sheet(){
 function pdf(){
  if(!S.orders.length){alert('Não há pedidos para gerar.');return}
  const J=window.jspdf;if(!J){alert('Biblioteca de PDF indisponível (sem internet). Na janela de impressão, escolha "Salvar como PDF".');print();return}
- const d=new J.jsPDF({unit:'mm',format:'a4'});let y=20;
- d.setFont('helvetica','bold');d.setFontSize(16);d.text('Almoço no Tonho',14,y);y+=7;
- d.setFont('helvetica','normal');d.setFontSize(10);d.text(new Date().toLocaleString('pt-BR'),14,y);y+=9;d.setFontSize(11);
- summary().replace(/—/g,'-').split('\n').forEach(l=>{d.setFont('helvetica',l&&l===l.toUpperCase()&&/[A-Z]/.test(l)?'bold':'normal');
-  d.splitTextToSize(l||' ',182).forEach(t=>{if(y>280){d.addPage();y=20}d.text(t,14,y);y+=5.5})});
- d.save('pedido-almoco-tonho.pdf')}
+ const d=new J.jsPDF({unit:'mm',format:'a4'}),W=210,M=14,CW=W-2*M,sun=nextSun();let y=0;
+ const C={ac:[200,68,26],red:[211,50,30],hl:[246,181,30],hls:[253,237,192],tx:[28,20,16],mu:[107,84,68],bd:[232,214,189],cr:[251,243,228],sf:[241,228,207]};
+ const fill=c=>d.setFillColor(...c),wrap=(s,w,sz)=>{d.setFontSize(sz);return d.splitTextToSize(String(s),w)};
+ const T=(s,x,yy,o={})=>{d.setFont('helvetica',o.b?'bold':o.i?'italic':'normal');d.setFontSize(o.s||10);d.setTextColor(...(o.c||C.tx));d.text(s,x,yy,o.a?{align:o.a}:undefined)};
+ const need=h=>{if(y+h>282){d.addPage();y=18}};
+ const sec=t=>{need(16);T(t,M,y,{b:1,s:12,c:C.ac});d.setDrawColor(...C.ac);d.setLineWidth(.6);d.line(M,y+2.2,W-M,y+2.2);y+=9};
+ // Cabeçalho com as listras do letreiro
+ for(let x=0,k=0;x<W;x+=7,k++){fill(k%2?C.cr:C.red);d.rect(x,0,7,5,'F')}
+ y=19;T('ALMOÇO NO TONHO',M,y,{b:1,s:22});
+ T('Pedido de '+sun.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}),M,y+7,{s:11,c:C.mu});
+ T('Gerado em '+new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}),W-M,y,{s:9,c:C.mu,a:'right'});
+ y+=15;
+ // Números do dia
+ const tot1={};S.orders.forEach(x=>Object.entries(x.items||{}).forEach(([i,q])=>tot1[i]=(tot1[i]||0)+q));
+ const sw=(CW-8)/3,stat=(k,v,l,h)=>{const x=M+k*(sw+4);fill(h?C.hl:C.sf);d.roundedRect(x,y,sw,19,2.5,2.5,'F');T(String(v),x+5,y+10.5,{b:1,s:20});T(l,x+5,y+15.5,{b:1,s:8,c:h?C.tx:C.mu})};
+ stat(0,S.orders.reduce((a,x)=>a+heads(x),0),'PESSOAS',1);stat(1,S.orders.length,'PEDIDOS');stat(2,cnt(tot1),'PRATOS');y+=29;
+ // Para a cozinha: total por prato, na ordem do cardápio
+ sec('PARA A COZINHA  ·  TOTAL POR PRATO');
+ const ord=Object.keys(IT);
+ Object.entries(tot1).sort((a,b)=>ord.indexOf(a[0])-ord.indexOf(b[0])).forEach(([i,q],k)=>{need(7.5);if(k%2==0){fill(C.cr);d.rect(M,y-5,CW,7.5,'F')}
+  T(q+'x',M+13,y,{b:1,s:11,a:'right'});T(IT[i]?IT[i].n:i,M+17,y,{s:11});y+=7.5});
+ y+=7;
+ // Um bloco por pedido
+ sec('POR PEDIDO');
+ S.orders.forEach(x=>{const t=tot(x.items),h=heads(x),g=x.mode=='grp',pp=isPP(x);
+  need(30);fill(C.sf);d.roundedRect(M,y-5.5,CW,13,2,2,'F');
+  T(tt(x),M+4,y,{b:1,s:12});T(R(t),W-M-4,y,{b:1,s:12,a:'right'});
+  T(g?`Grupo · ${h} pessoas · ${pp?'cada um paga os seus pratos':'conta dividida igualmente'}`:'Individual',M+4,y+4.8,{s:8.5,c:C.mu});y+=13;
+  if(g){const l=wrap('Integrantes: '+joinE((x.members||[]).filter(m=>m.trim())),CW-8,10);need(l.length*5);T(l,M+4,y,{s:10});y+=l.length*5+2}
+  const line=(a,b,o={})=>{const l=wrap(a,CW-42,o.s||10);need(l.length*5+1);T(l,M+4,y,o);if(b)T(b,W-M-4,y,{...o,a:'right'});y+=l.length*5};
+  if(pp)Object.entries(x.per).forEach(([n,it])=>{line(n,R(tot(it)),{b:1});line(itTxt(it).replace(/, /g,'  ·  '),'',{s:9,c:C.mu});y+=2});
+  else Object.entries(x.items||{}).forEach(([i,q])=>line(q+'x '+(IT[i]?IT[i].n:i),R((IT[i]?IT[i].p:0)*q)));
+  if(g&&!pp){need(10);y+=1;fill(C.hls);d.roundedRect(M+2,y-4.5,CW-4,8,1.5,1.5,'F');T(`Dividido igual entre ${h} pessoas`,M+5,y+0.8,{s:10});T(R(t/h)+' cada',W-M-5,y+0.8,{b:1,s:10,a:'right'});y+=7}
+  if(x.note){y+=1;line('Obs.: '+x.note,'',{i:1,s:9.5,c:C.mu})}
+  y+=8});
+ // Rodapé com numeração
+ const N=d.getNumberOfPages();for(let p=1;p<=N;p++){d.setPage(p);d.setDrawColor(...C.bd);d.setLineWidth(.3);d.line(M,287,W-M,287);T('Almoço no Tonho',M,292,{s:8,c:C.mu});T(`Página ${p} de ${N}`,W-M,292,{s:8,c:C.mu,a:'right'})}
+ d.save(`pedido-almoco-tonho-${sun.getDate()}-${sun.getMonth()+1}.pdf`)}
 const tt=x=>x.title||(x.mode=='grp'?'Grupo de '+x.name:x.name);
 function summary(){const t={};S.orders.forEach(x=>Object.entries(x.items||{}).forEach(([i,q])=>t[i]=(t[i]||0)+q));
  let s=`PEDIDO DE ALMOÇO — ${S.orders.reduce((a,x)=>a+heads(x),0)} pessoas\n\nTOTAL POR ITEM\n`;
