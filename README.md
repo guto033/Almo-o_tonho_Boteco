@@ -43,7 +43,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /orders/{id} {
-      allow create, update: if request.resource.data.keys().hasOnly(['name','mode','title','members','items','shared','note','at'])
+      allow create, update: if request.resource.data.keys().hasOnly(['name','mode','title','members','split','items','per','shared','note','at'])
                             && request.resource.data.name is string && request.resource.data.name.size() < 80
                             && request.resource.data.note.size() < 500;
       allow read, delete: if request.auth != null;
@@ -64,3 +64,12 @@ Com isso qualquer pessoa cria/atualiza o próprio pedido, e somente o administra
 - Para ver o pedido de novo (mesmo depois de sair), a pessoa entra com o mesmo nome no mesmo aparelho. O pedido fica guardado no aparelho; a leitura de pedidos no servidor é só do administrador.
 - **Várias pessoas ao mesmo tempo:** cada pedido é um registro separado, com id único, então ninguém sobrescreve o pedido do outro, mesmo com nomes iguais em aparelhos diferentes. O painel do administrador atualiza em tempo real. Toque duplo em "Enviar" é bloqueado, e reenviar o mesmo pedido não duplica.
 - Isso só vale com o Firebase configurado. No modo local (teste) não há compartilhamento.
+
+## Nova dinâmica (v4)
+- **Sem "Dividir" no cardápio.** No pedido em grupo, o grupo escolhe como dividir a conta:
+  - **Dividir igual:** uma sacola só; o total é dividido igualmente entre os integrantes.
+  - **Cada um seus pratos:** acima do cardápio aparece "Pedindo para: Ana | Bruno…"; cada prato vai para a pessoa selecionada e a sacola mostra o subtotal de cada um.
+- **Administrador escondido:** o botão saiu da tela inicial. O acesso é pelo link secreto `https://SEU-SITE/#admin` (mesmo usuário e senha do Firebase).
+- **Resumo e PDF com valores:** valor de cada pedido e quanto cada pessoa paga (sem total geral, como na v3.1).
+- **Atenção:** os pedidos agora têm os campos `split` e `per`. Atualize as regras do Firestore (passo 4 acima) no console do Firebase; sem isso, o envio de pedidos em grupo falha com "Sem permissão".
+

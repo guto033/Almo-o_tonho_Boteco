@@ -50,54 +50,101 @@ const ph=(id,nm)=>FOTOS[id]?`<img class="im" src="${esc(FOTOS[id])}" alt="${esc(
 const $=document.getElementById('app'),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const R=v=>'R$ '+v.toFixed(2).replace('.',','),slug=n=>n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const sha=async s=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))].map(x=>x.toString(16).padStart(2,'0')).join('');
-let db,unsub=null,ADMIN_HASH='4002a55b18e93de6f9e9d6d52c20618161e63c86f4beff9dcb2e72d027a65898',S={pt:'menu',sent:null,conf:false,upd:false,sending:false,who:'',sess:null,tab:'p',err:'',cat:0,cart:{},shared:[],jd:null,grp:false,title:'',members:[''],note:'',sheet:false,saved:false,orders:[]};
+let db,unsub=null,ADMIN_HASH='4002a55b18e93de6f9e9d6d52c20618161e63c86f4beff9dcb2e72d027a65898',S={pt:'menu',sent:null,conf:false,upd:false,sending:false,who:'',au:'',sess:null,err:'',cat:0,cart:{},grp:false,split:'eq',per:[{}],pi:0,gopen:true,title:'',members:[''],note:'',sheet:false,saved:false,orders:[]};
 const tot=it=>Object.entries(it||{}).reduce((s,[i,q])=>s+(IT[i]?IT[i].p*q:0),0),cnt=it=>Object.values(it||{}).reduce((s,q)=>s+q,0);
 const heads=x=>x.mode=='grp'?Math.max(1,(x.members||[]).filter(m=>m.trim()).length):1;
 const mineGet=sl=>{try{return JSON.parse(localStorage.getItem('tonho:mine:'+sl))}catch(e){return null}},mineSet=(sl,v)=>{try{localStorage.setItem('tonho:mine:'+sl,JSON.stringify(v))}catch(e){}};
+// Grupo: split 'eq' = total dividido igualmente; 'pp' = cada um seus pratos (per: {nome: {id: q}}).
+const isPP=x=>x.mode=='grp'&&x.split=='pp'&&x.per,ppOn=()=>S.grp&&S.split=='pp';
+const nmOf=(m,i)=>m.trim()||'Pessoa '+(i+1),itTxt=it=>Object.entries(it||{}).map(([i,q])=>q+'x '+(IT[i]?IT[i].n:i)).join(', ');
+const first=n=>String(n).trim().split(/\s+/)[0],joinE=a=>a.length>1?a.slice(0,-1).join(', ')+' e '+a[a.length-1]:a.join('');
+const av=(m,i)=>`<span class="av av${i%4+1}" aria-hidden="true">${esc((m.trim()[0]||String(i+1)).toUpperCase())}</span>`;
+const dirty=()=>!!S.sent&&JSON.stringify([S.cart,S.note])!==JSON.stringify([S.sent.items,S.sent.note]);
+const nextSun=()=>{const d=new Date();d.setDate(d.getDate()+(7-d.getDay())%7);return d};
+function splitLines(x){if(x.mode!='grp')return [];
+ if(isPP(x))return Object.entries(x.per).map(([n,it])=>`${n}: ${itTxt(it)} — ${R(tot(it))}`);
+ return [`Dividido igual entre ${heads(x)} pessoas: ${R(tot(x.items)/heads(x))} cada`]}
+// Ícones (traço, herdam a cor do texto)
+const sv=p=>`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const I={user:sv('<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>'),
+ users:sv('<circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.8-3.5 3.5-5.5 6.5-5.5s5.7 2 6.5 5.5M16 14.5c2.6 0 4.8 1.7 5.5 4.5"/>'),
+ bag:sv('<path d="M5 8h14l-1 12H6z"/><path d="M9 8a3 3 0 0 1 6 0"/>'),x:sv('<path d="M6 6l12 12M18 6L6 18"/>'),plus:sv('<path d="M12 5v14M5 12h14"/>'),
+ trash:sv('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'),file:sv('<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 13h6M9 17h6"/>'),
+ copy:sv('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>'),check:sv('<path d="M5 12l5 5L20 7"/>'),
+ alert:sv('<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>')};
+const spin='<span class="spin" aria-hidden="true"></span>';
+const alertBox=(k,t,m)=>`<div class="al ${k}" role="${k=='dg'?'alert':'status'}">${I.alert}<div><b>${esc(t)}</b>${esc(m)}</div></div>`;
+const topBar=(right,adm)=>`<div class="top"><div class="logo"><span class="seal" aria-hidden="true"><i></i></span>TONHO${adm?' <span class="badge">ADMIN</span>':''}</div>${right}</div>`;
+const opt=(a,v,on,ic,t,s)=>`<button class="opt${ic?'':' sm'}${on?' on':''}" data-a="${a}" data-v="${v}" role="radio" aria-checked="${on}">${ic?`<span class="ic">${ic}</span>`:''}<span class="tx"><b>${t}</b><small>${s}</small></span>${ic?'<span class="rd"></span>':''}</button>`;
 function save(){try{sessionStorage.setItem('s',JSON.stringify(S.sess))}catch(e){}}
 function start(){
  const local=window.TONHO_MODE!='online';
- if(S.tab=='a')return `<header><b>🍽️ Almoço no Tonho</b><button data-a="tab" data-v="p">← Voltar</button></header><div class="box"><b>Administrador</b><input id="au" placeholder="Usuário" autocomplete="username" autocapitalize="none"><input id="pw" type="password" placeholder="Senha" autocomplete="current-password"><p class="err">${esc(S.err)}</p><button class="p" style="width:100%" data-a="login">Entrar</button></div>`;
- return `<header><b>🍽️ Almoço no Tonho</b><button data-a="tab" data-v="a">Administrador</button></header><div class="box"><b>Como você vai almoçar?</b><div class="seg"><button class="chip ${S.grp?'':'on'}" data-a="m0" data-v="solo">🙋 Individual</button><button class="chip ${S.grp?'on':''}" data-a="m0" data-v="grp">👥 Em grupo</button></div><input data-f="who" value="${esc(S.who)}" placeholder="${S.grp?'Nome do responsável pelo grupo':'Seu nome'}" autocomplete="name"><p class="err">${esc(S.err)}</p><button class="p" style="width:100%" data-a="go">Ver cardápio</button>${local?'<p class="mu">Modo de teste: o pedido fica salvo só neste aparelho.</p>':''}</div>`}
+ // Acesso do administrador só pelo link secreto: …/#admin
+ if(location.hash=='#admin')return `<div class="ent"><div style="margin-top:32px"><span class="seal lg" aria-hidden="true"><i></i></span></div><h1 class="d" style="margin:16px 0 6px">Área do organizador</h1><p class="mu" style="margin:0">Só para quem junta os pedidos.</p>
+  <label class="field"><span>Usuário</span><input id="au" value="${esc(S.au)}" autocomplete="username" autocapitalize="none"></label>
+  <label class="field"><span>Senha</span><span class="pw"><input id="pw" type="password" autocomplete="current-password"><button type="button" data-a="spw">Mostrar</button></span></label>
+  ${S.err?alertBox('dg','Sem permissão',S.err):''}<p><button class="lnk" style="padding:0" data-a="home">← Voltar ao cardápio</button></p></div>
+  <div class="bar"><button class="btn p" data-a="login">Entrar</button></div>`;
+ const sun=nextSun();
+ return `<div class="ent"><div class="poster"><span class="bigseal" aria-hidden="true"><span><i></i><b>TONHO</b><small>BOTECO</small></span></span><div class="pt"><span>Almoço de</span><span class="y">domingo · ${sun.getDate()}/${sun.getMonth()+1}</span></div></div>
+  <h1 class="d">Como você vai almoçar?</h1>
+  <div class="opts" role="radiogroup">${opt('m0','solo',!S.grp,I.user,'Individual','Só o meu prato')}${opt('m0','grp',S.grp,I.users,'Em grupo','Eu peço para várias pessoas')}</div>
+  <label class="field"><span>${S.grp?'Nome do responsável pelo grupo':'Seu nome'}</span><input data-f="who" value="${esc(S.who)}" placeholder="Como te chamam no grupo" autocomplete="name"></label>
+  ${S.grp?'<p class="hint">Você adiciona o resto do grupo no próximo passo.</p>':''}${S.err?`<p class="err">${esc(S.err)}</p>`:''}${local?'<p class="hint">Modo de teste: o pedido fica salvo só neste aparelho.</p>':''}</div>
+  <div class="bar"><button class="btn p" data-a="go">Ver cardápio</button></div>`}
 function render(){
- if(!db){$.innerHTML='<div class="box"><b>Erro ao iniciar</b><p>Não foi possível carregar o sistema. Recarregue a página.</p></div>';return}
+ if(!db){$.innerHTML='<div class="empty"><h2 class="d">Erro ao iniciar</h2><p class="mu">Não foi possível carregar o sistema. Recarregue a página.</p></div>';return}
  if(!S.sess){$.innerHTML=start();return}
- $.innerHTML=`<header><b>🍽️ ${S.sess.role=='a'?'Painel do administrador':'Olá, '+esc(S.sess.name)}</b><button data-a="out">${S.sess.role=='a'?'Sair':'Início'}</button></header>`+(S.sess.role=='a'?admin():tabs()+(S.pt=='mine'?mine():shop())+(S.conf?confirmBox():''));
+ if(S.sess.role=='a'){$.innerHTML=topBar('<button class="lnk" data-a="out">Sair</button>',1)+admin();return}
+ $.innerHTML=topBar(`<div class="who"><span>${S.grp?'Grupo da':'Olá,'} <b>${esc(first(S.sess.name))}</b></span><button class="lnk" data-a="out">Sair</button></div>`)+tabs()+(S.pt=='mine'?mine():shop())+(S.conf?confirmBox():'');
 }
-function tabs(){return `<div class="seg" style="margin:10px 12px"><button class="chip ${S.pt=='menu'?'on':''}" data-a="pt" data-v="menu">🍽️ Cardápio</button><button class="chip ${S.pt=='mine'?'on':''}" data-a="pt" data-v="mine">📋 Meu pedido${S.sent?' ✓':''}</button></div>`}
-function confirmBox(){const o=S.sent;return `<div class="sheet" style="z-index:40;align-items:center"><div style="width:calc(100% - 32px);max-width:420px;border-radius:18px;text-align:center"><div style="font-size:3rem">✅</div><h2 style="margin:6px 0">${S.upd?'Pedido atualizado!':'Pedido enviado!'}</h2><p>Recebemos seu pedido, <b>${esc(S.sess.name)}</b>.<br>Total: <b>${R(tot(o.items))}</b></p><p class="mu">Você pode conferir ou alterar na aba “Meu pedido”.</p><button class="p" style="width:100%" data-a="ok">OK</button></div></div>`}
+function tabs(){return `<div class="tabs" role="tablist"><button role="tab" aria-selected="${S.pt=='menu'}" class="${S.pt=='menu'?'on':''}" data-a="pt" data-v="menu">Cardápio</button><button role="tab" aria-selected="${S.pt=='mine'}" class="${S.pt=='mine'?'on':''}" data-a="pt" data-v="mine">Meu pedido${dirty()?'<span class="dot" title="Alterações não enviadas"></span>':''}</button></div>`}
+function confirmBox(){const o=S.sent,t=tot(o.items),h=heads(o);return `<div class="ov ctr"><div class="mdl" role="dialog" aria-modal="true" aria-labelledby="cft"><div class="okic">${I.check}</div><h2 class="d" id="cft" style="font-size:40px">${S.upd?'Pedido atualizado!':'Pedido enviado!'}</h2><p class="mu">Recebemos seu pedido, ${esc(first(S.sess.name))}. Se mudar de ideia, dá para alterar em “Meu pedido”.</p><div class="sumbox"><div class="row"><b>Total</b><b>${R(t)}</b></div>${o.mode=='grp'?`<div class="row mu sm"><span>${h} pessoas</span><span>${o.split=='pp'?'cada um paga o seu':R(t/h)+' cada'}</span></div>`:''}</div><button class="btn p" data-a="ok">OK</button></div></div>`}
 function mine(){const o=S.sent;
- if(!o)return `<div class="box"><b>Você ainda não enviou um pedido.</b><p class="mu">Escolha seus pratos no cardápio e envie o pedido.</p><button class="p" style="width:100%" data-a="pt" data-v="menu">Ir para o cardápio</button></div>`;
- const dirty=JSON.stringify([S.cart,S.note,S.shared])!==JSON.stringify([o.items,o.note,o.shared]);
- let h=`<div class="box"><div class="row"><b>${esc(tt(o))}</b><span class="ok">✓ Enviado</span></div><div class="mu">${new Date(o.at).toLocaleString('pt-BR')}</div>`;
- if(o.mode=='grp')h+=`<div class="mu">Integrantes: ${esc((o.members||[]).join(', '))}</div>`;
- Object.entries(o.items||{}).forEach(([id,q])=>{h+=`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--bd)"><span>${q}x ${esc(IT[id]?IT[id].n:id)}</span><span>${R((IT[id]?IT[id].p:0)*q)}</span></div>`});
- (o.shared||[]).forEach(j=>{if(IT[j.id])h+=`<div class="mu">👥 ${esc(IT[j.id].n)} dividido entre ${esc(j.members.join(', '))} (titular: ${esc(j.members[j.holder])})</div>`});
- if(o.note)h+=`<div class="mu" style="margin-top:8px">Obs.: ${esc(o.note)}</div>`;
- h+=`<p class="row"><b>Total</b><b>${R(tot(o.items))}</b></p>`;
- if(dirty)h+='<p class="err">Você tem alterações que ainda não foram enviadas.</p>';
- return h+'<button class="p" style="width:100%" data-a="edit">✏️ Alterar pedido</button></div>'}
+ if(!o)return `<div class="empty"><div class="eic">${I.file}</div><h2 class="d">Nenhum pedido ainda</h2><p class="mu">Monte sua sacola no cardápio e toque em “Enviar pedido”. Ele aparece aqui.</p></div><div class="bar"><button class="btn s" data-a="pt" data-v="menu">Ir para o cardápio</button></div>`;
+ const t=tot(o.items),h=heads(o),row=(a,b)=>`<div class="row it"><span>${a}</span><b>${b}</b></div>`;
+ let s=dirty()?`<div class="pad">${alertBox('wn','Alterações não enviadas','Você mexeu na sacola depois de enviar. O pedido que vale ainda é o abaixo.')}</div>`:'';
+ s+=`<div class="card"><div class="row"><h2 class="d">Pedido enviado</h2><span class="okb">Recebido</span></div><div class="mu sm" style="margin-top:6px">${esc(new Date(o.at).toLocaleString('pt-BR',{weekday:'long',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}))}</div>`;
+ if(o.mode=='grp')s+=`<div class="lbl">Integrantes</div><div>${esc(joinE(o.members||[]))}</div>`;
+ if(isPP(o))s+='<div class="lbl">Divisão · cada um seus pratos</div>'+Object.entries(o.per).map(([n,it])=>row(`<b>${esc(n)}</b> <span class="mu sm">· ${esc(itTxt(it))}</span>`,R(tot(it)))).join('');
+ else{s+='<div class="lbl">Itens</div>'+Object.entries(o.items||{}).map(([id,q])=>row(`${q}× ${esc(IT[id]?IT[id].n:id)}`,R((IT[id]?IT[id].p:0)*q))).join('');
+  if(o.mode=='grp')s+=`<div class="lbl">Divisão</div><div>Dividir igual · <b>${R(t/h)}</b> por pessoa</div>`}
+ if(o.note)s+=`<div class="lbl">Observações</div><div>${esc(o.note)}</div>`;
+ return s+`<div class="row tot2"><b>Total</b><span class="d">${R(t)}</span></div></div><div class="bar"><button class="btn p" data-a="edit">Alterar pedido</button></div>`}
+function group(){
+ const ms=S.members,named=ms.filter(m=>m.trim()).length;let h;
+ if(!S.gopen)h=`<div class="gsum"><span><b>${named} pessoas</b> · ${S.split=='pp'?'Cada um seus pratos':'Dividir igual'}</span><button class="lnk" data-a="gopen">Editar</button></div>`;
+ else h=`<div class="card"><div class="row"><h2 class="d">Quem vai almoçar?</h2><span class="mu sm">${named} pessoas</span></div>
+  ${ms.map((m,i)=>`<div class="mem">${av(m,i)}<input data-f="mem" data-i="${i}" value="${esc(m)}" placeholder="Nome da pessoa ${i+1}" aria-label="Nome da pessoa ${i+1}">${ms.length>1?`<button class="x" data-a="memrm" data-i="${i}" aria-label="Remover ${esc(nmOf(m,i))}">${I.x}</button>`:''}</div>`).join('')}
+  <button class="dash" data-a="mem">${I.plus} Adicionar pessoa</button>
+  <div class="field" style="margin-top:18px"><span>Como dividir a conta?</span></div>
+  <div class="spl" role="radiogroup">${opt('split','eq',S.split=='eq','','Dividir igual','Total ÷ '+(named||1)+' pessoas')}${opt('split','pp',S.split=='pp','','Cada um seus pratos','Cada um paga o seu')}</div>
+  <div style="margin-top:12px"><button class="btn s sm" data-a="gclose">Pronto</button></div></div>`;
+ if(S.split=='pp'){const cur=nmOf(ms[S.pi]||'',S.pi);
+  h+=`<div class="pfor"><span class="cap">Pedindo para</span><div class="pcs" role="radiogroup">${ms.map((m,i)=>`<button class="pchip${S.pi==i?' on':''}" data-a="pi" data-v="${i}" role="radio" aria-checked="${S.pi==i}">${av(m,i)}<span class="nm">${esc(first(nmOf(m,i)))}</span>${cnt(S.per[i])?`<span class="ct">${cnt(S.per[i])}</span>`:''}</button>`).join('')}</div><span class="sm">O que você adicionar agora vai para <b>${esc(cur)}</b>.</span></div>`}
+ return h}
 function shop(){
- const n=cnt(S.cart);let h=party()+(S.saved?'<p class="ok" style="margin:0 14px">✓ Pedido enviado. Para alterar, mexa na sacola e toque em “Atualizar pedido”.</p>':'')+`<div class="chips">${MENU.map((m,i)=>`<span class="chip ${S.cat==i?'on':''}" data-a="cat" data-v="${i}">${m[0]} ${m[1]}</span>`).join('')}</div>`;
- const m=MENU[S.cat];h+=`<h2>${m[1]}</h2>`;
- m[2].forEach(([id,nm,d,p])=>{const q=S.cart[id]||0;h+=`<div class="dish"><div class="t"><div class="n">${esc(nm)}</div><div class="mu">${esc(d)}</div><div class="pr">${R(p)}</div>${S.grp&&S.members.filter(x=>x.trim()).length>1?`<button class="chip dv" data-a="jt" data-id="${id}">👥 Dividir</button>`:''}</div><div class="ph${FOTOS[id]?"":" nf"}">${FOTOS[id]?ph(id,nm):'<span title="Foto em breve">📷</span>'}${q?`<div class="qs"><button data-a="q" data-id="${id}" data-d="-1">−</button>${q}<button data-a="q" data-id="${id}" data-d="1">+</button></div>`:`<button class="add" data-a="q" data-id="${id}" data-d="1">+</button>`}</div></div>`});
- if(n)h+=`<div class="bar"><button class="p" data-a="sheet"><span>🛍️ Ver sacola (${n})</span><span>${R(tot(S.cart))}</span></button></div>`;
- 
- if(S.sheet)h+=sheet();if(S.jd)h+=jmodal();return h;
+ const n=cnt(S.cart),pp=ppOn(),cur=pp?S.per[S.pi]||{}:S.cart,who=pp?first(nmOf(S.members[S.pi]||'',S.pi)):'';
+ let h=(S.grp?group():'')+(S.err&&!S.sheet?`<p class="err pad">${esc(S.err)}</p>`:'');
+ h+=`<div class="cats">${MENU.map((m,i)=>`<button class="chip${S.cat==i?' on':''}" data-a="cat" data-v="${i}">${m[1]}</button>`).join('')}</div>`;
+ const m=MENU[S.cat];h+=`<h2 class="d sec">${m[1]}</h2>`;
+ m[2].forEach(([id,nm,d,p])=>{const q=cur[id]||0;
+  const tags=pp?S.members.map((x,i)=>i!=S.pi&&S.per[i]&&S.per[i][id]?`<span class="tag">${esc(first(nmOf(x,i)))} ×${S.per[i][id]}</span>`:'').join(''):'';
+  h+=`<div class="dish"><div class="t"><div class="n">${esc(nm)}</div><div class="ds">${esc(d)}</div><div class="pl"><span class="pr">${R(p)}</span>${tags}</div></div><div class="ph">${FOTOS[id]?ph(id,nm):`<div class="nf" title="Foto em breve"><span>${esc(nm[0])}</span></div>`}${q?`<div class="qs"><button data-a="q" data-id="${id}" data-d="-1" aria-label="Tirar um ${esc(nm)}">−</button>${q}<button data-a="q" data-id="${id}" data-d="1" aria-label="Mais um ${esc(nm)}">+</button></div>`:`<button class="add" data-a="q" data-id="${id}" data-d="1" aria-label="Adicionar ${esc(nm)}${who?' para '+esc(who):''}">${I.plus}${who?`<span>${esc(who)}</span>`:''}</button>`}</div></div>`});
+ h+=`<div class="bar">${n?`<button class="btn p cart" data-a="sheet"><span>${I.bag} Ver sacola (${n})</span><span>${R(tot(S.cart))}</span></button>`:`<button class="btn" disabled>${I.bag} Sacola vazia</button>`}</div>`;
+ if(S.sheet)h+=sheet();return h;
 }
 function sheet(){
- let h=`<div class="sheet"><div><div class="row"><h2 style="margin:0">Sua sacola</h2><button data-a="close">Fechar</button></div>`;
- Object.entries(S.cart).forEach(([id,q0])=>{const q=q0-S.shared.filter(j=>j.id==id).length;if(q<=0)return;h+=`<div class="row" style="padding:8px 0;border-bottom:1px solid var(--bd)"><span>${esc(IT[id].n)}<br><span class="mu">${R(IT[id].p)}</span></span><span>${q}x <button data-a="q" data-id="${id}" data-d="-1">−</button> <button data-a="q" data-id="${id}" data-d="1">+</button></span></div>`});
- S.shared.forEach((j,i)=>{h+=`<div class="box" style="margin:8px 0"><div class="row"><b>👥 ${esc(IT[j.id].n)}</b><button data-a="jrm" data-i="${i}">Remover</button></div><div class="mu">Titular: <b>${esc(j.members[j.holder])}</b> · Com: ${esc(j.members.join(', '))}</div><div class="mu">${R(IT[j.id].p)} ÷ ${j.members.length} = ${R(IT[j.id].p/j.members.length)} por pessoa</div></div>`});h+=(S.grp?`<div class="mu" style="margin:10px 0">👥 Grupo de <b>${esc(S.sess.name)}</b> · ${S.members.filter(m=>m.trim()).length} pessoas</div>`:"")+`<textarea rows="2" data-f="note" placeholder="Observações (sem cebola, alergias…)">${esc(S.note)}</textarea><p class="row"><b>Total</b><b>${R(tot(S.cart))}</b></p><p class="err">${esc(S.err)}</p><button class="p" style="width:100%" data-a="send" ${S.sending?'disabled':''}>${S.sending?'Enviando…':S.saved?'Atualizar pedido':'Enviar pedido'}</button></div></div>`;return h;
+ const pp=ppOn(),names=S.members.map(m=>m.trim()).filter(Boolean),t=tot(S.cart);
+ const row=(id,q,m)=>`<div class="li"><div class="t"><b>${esc(IT[id].n)}</b><small>${R(IT[id].p)} cada</small></div><div class="stp"><button data-a="q" data-id="${id}" data-d="-1"${m} aria-label="Tirar um">−</button>${q}<button data-a="q" data-id="${id}" data-d="1"${m} aria-label="Mais um">+</button></div><b class="lt">${R(IT[id].p*q)}</b></div>`;
+ let b='';
+ if(pp)S.members.forEach((nm,i)=>{const it=S.per[i]||{};if(!cnt(it))return;b+=`<div class="pcard"><div class="row"><span>${av(nm,i)}<b>${esc(nmOf(nm,i))}</b></span><b>${R(tot(it))}</b></div>${Object.entries(it).map(([id,q])=>row(id,q,` data-m="${i}"`)).join('')}</div>`});
+ else b=Object.entries(S.cart).map(([id,q])=>row(id,q,'')).join('');
+ b+=`<label class="field"><span>Observações</span><textarea rows="2" data-f="note" placeholder="Ex.: pastel bem frito, sem cebola">${esc(S.note)}</textarea></label>`;
+ if(S.grp&&!pp&&names.length)b+=`<div class="split"><div><b>Dividido entre ${names.length} pessoas</b><small>${esc(joinE(names))}</small></div><div><span class="d">${R(t/names.length)}</span><small style="text-align:right">cada</small></div></div>`;
+ if(S.err)b+=alertBox('dg',/internet/.test(S.err)?'Sem internet':'Não deu certo',S.err);
+ return `<div class="ov"><div class="sh" role="dialog" aria-modal="true" aria-labelledby="sht"><div class="hd"><h2 class="d" id="sht">${pp?'Sacola do grupo':'Sua sacola'}</h2><button class="x" data-a="close" aria-label="Fechar">${I.x}</button></div><div class="bd">${b}</div><div class="ft"><div class="tot"><b>${pp?'Total do grupo':'Total'}</b><span class="d">${R(t)}</span></div><button class="btn p${S.sending?' busy':''}" data-a="send" ${S.sending?'disabled':''}>${S.sending?spin+' Enviando pedido…':S.saved?'Atualizar pedido':'Enviar pedido'}</button></div></div></div>`;
 }
-function party(){
- let h=`<div class="box"><b>Como você vai almoçar?</b><div class="seg"><button class="chip ${S.grp?'':'on'}" data-a="solo">🙋 Sozinho</button><button class="chip ${S.grp?'on':''}" data-a="gr">👥 Em grupo</button></div>`;
- if(S.grp){h+=`<div class="mu">Responsável: <b>${esc(S.sess.name)}</b>. Cadastre abaixo quem vai almoçar (inclua você).</div>`;
-  S.members.forEach((m,i)=>{h+=`<div class="row"><input data-f="mem" data-i="${i}" value="${esc(m)}" placeholder="Nome da pessoa ${i+1}">${S.members.length>1?`<button data-a="memrm" data-i="${i}" aria-label="Remover">✕</button>`:''}</div>`});
-  h+='<button data-a="mem">+ Adicionar pessoa</button><p class="mu">Para dividir um prato entre pessoas do grupo, toque em “Dividir” nele.</p>'}
- return h+(S.err&&!S.sheet&&!S.jd?`<p class="err">${esc(S.err)}</p>`:'')+'</div>'}
-function jmodal(){const j=S.jd;return `<div class="sheet" style="z-index:30"><div><div class="row"><h2 style="margin:0">Dividir prato</h2><button data-a="jx">Cancelar</button></div><p><b>${esc(IT[j.id].n)}</b> · ${R(IT[j.id].p)}</p><p class="mu">Marque quem vai dividir e escolha o titular (responsável pelo prato).</p>${j.ms.map((m,i)=>`<div class="row pick"><label><input type="checkbox" data-a="js" data-i="${i}" ${j.sel[i]?'checked':''}> ${esc(m)}</label>${j.sel[i]?`<label class="mu"><input type="radio" name="ht" data-a="jh" data-i="${i}" ${j.holder==i?'checked':''}> Titular</label>`:''}</div>`).join('')}<p class="err">${esc(S.err)}</p><button class="p" style="width:100%" data-a="jok">Adicionar à sacola</button></div></div>`}
-function clearShared(){S.shared.forEach(j=>{S.cart[j.id]--;if(S.cart[j.id]<=0)delete S.cart[j.id]});S.shared=[];if(!cnt(S.cart))S.sheet=false}
 function pdf(){
  if(!S.orders.length){alert('Não há pedidos para gerar.');return}
  const J=window.jspdf;if(!J){alert('Biblioteca de PDF indisponível (sem internet). Na janela de impressão, escolha "Salvar como PDF".');print();return}
@@ -111,58 +158,77 @@ const tt=x=>x.title||(x.mode=='grp'?'Grupo de '+x.name:x.name);
 function summary(){const t={};S.orders.forEach(x=>Object.entries(x.items||{}).forEach(([i,q])=>t[i]=(t[i]||0)+q));
  let s=`PEDIDO DE ALMOÇO — ${S.orders.reduce((a,x)=>a+heads(x),0)} pessoas\n\nTOTAL POR ITEM\n`;
  Object.entries(t).forEach(([i,q])=>s+=`${q}x ${IT[i]?IT[i].n:i}\n`);s+='\nPOR PEDIDO\n';
- S.orders.forEach(x=>{s+=`\n${tt(x)}${x.mode=='grp'?' (integrantes: '+(x.members||[]).filter(m=>m.trim()).join(', ')+')':''} — ${R(tot(x.items))}\n`+Object.entries(x.items||{}).map(([i,q])=>` - ${q}x ${IT[i]?IT[i].n:i}\n`).join('')+(x.shared||[]).map(j=>` - EM CONJUNTO: ${IT[j.id].n} (titular: ${j.members[j.holder]}; com ${j.members.join(', ')})`+String.fromCharCode(10)).join('')+(x.note?` Obs: ${x.note}\n`:'')});
+ S.orders.forEach(x=>{s+=`\n${tt(x)}${x.mode=='grp'?' ('+heads(x)+' pessoas)':''} — ${R(tot(x.items))}\n`;
+  if(!isPP(x))s+=Object.entries(x.items||{}).map(([i,q])=>` - ${q}x ${IT[i]?IT[i].n:i}\n`).join('');
+  s+=splitLines(x).map(l=>` - ${l}\n`).join('')+(x.note?` Obs: ${x.note}\n`:'')});
  return s}
 function admin(){
- let h=(window.TONHO_MODE!='online'?`<div class="box"><b>⚠️ Modo local</b><p class="mu">O painel só mostra pedidos feitos neste mesmo navegador. Configure o Firebase (veja o README) para receber pedidos de todos os aparelhos.</p></div>`:'')+(S.err?`<p class="err" style="margin:12px">${esc(S.err)}</p>`:'')+`<p class="mu" style="margin:12px 12px 0">Exclua abaixo os pedidos que não devem entrar. O resumo e o PDF mostram só o que sobrar.</p><div class="box"><b>${S.orders.length}</b> pedidos · <b>${S.orders.reduce((a,x)=>a+heads(x),0)}</b> pessoas</div><div class="box"><b>Resumo para o restaurante</b><pre id="sum">${esc(summary())}</pre><button data-a="copy">Copiar resumo</button> <span id="cp" class="ok"></span></div>`;
- S.orders.forEach(x=>{h+=`<div class="box"><div class="row"><b>${esc(tt(x))}${x.mode=='grp'?' · '+heads(x)+' pessoas':''}</b><span>${R(tot(x.items))}</span></div>${x.mode=='grp'?`<div class="mu">Integrantes: ${esc((x.members||[]).filter(m=>m.trim()).join(', '))}</div>`:''}<div class="mu">${Object.entries(x.items||{}).map(([i,q])=>q+'x '+esc(IT[i]?IT[i].n:i)).join('; ')}</div>${(x.shared||[]).map(j=>`<div class="mu">👥 ${esc(IT[j.id].n)} — titular: <b>${esc(j.members[j.holder])}</b> · com ${esc(j.members.join(', '))}</div>`).join('')}${x.note?`<div class="mu">Obs: ${esc(x.note)}</div>`:''}<button class="dng" data-a="del" data-id="${x.id}">🗑️ Excluir pedido</button></div>`});
- return h+(S.orders.length?`<div class="bar"><button class="p" data-a="pdf"><span>📄 Gerar PDF</span><span>${S.orders.length} pedido${S.orders.length>1?'s':''}</span></button></div>`:'');
+ const n=S.orders.length,ppl=S.orders.reduce((a,x)=>a+heads(x),0);
+ let h=`<h1 class="d atitle">${esc(nextSun().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'}))}</h1>`;
+ if(window.TONHO_MODE!='online')h+=`<div class="pad">${alertBox('wn','Modo local','O painel só mostra pedidos feitos neste mesmo navegador. Configure o Firebase (veja o README) para receber pedidos de todos os aparelhos.')}</div>`;
+ if(S.err)h+=`<div class="pad">${alertBox('dg','Erro',S.err)}</div>`;
+ h+=`<div class="stats"><div class="stat${n?' hl':''}"><span class="d">${n}</span><small>pedidos</small></div><div class="stat"><span class="d">${ppl}</span><small>pessoas</small></div></div>`;
+ if(!n)return h+`<div class="empty"><h2 class="d">Ninguém pediu ainda</h2><p class="mu">Mande o link do cardápio no grupo do WhatsApp. Os pedidos aparecem aqui.</p><button class="btn s sm" data-a="clink">${I.copy} Copiar link do cardápio</button><p id="cp" class="okt"></p></div><div class="bar"><button class="btn" disabled>${I.file} Gerar PDF</button></div>`;
+ h+=`<div class="card"><div class="row"><b>Resumo para o restaurante</b><button class="lnk" data-a="copy">${I.copy} Copiar</button></div><pre id="sum">${esc(summary())}</pre><span id="cp" class="okt"></span></div><h3 class="hsm">Pedidos (${n})</h3><p class="mu sm pad" style="margin:4px 0 0">Exclua os pedidos que não devem entrar. O resumo e o PDF mostram só o que sobrar.</p>`;
+ S.orders.forEach(x=>{const t=tot(x.items),hd=heads(x),g=x.mode=='grp';
+  h+=`<div class="card"><div class="row"><span><b>${esc(x.name)}</b> <span class="mu sm">· ${g?'grupo de '+hd:'individual'}${x.at?' · '+new Date(x.at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</span></span><b>${R(t)}</b></div>`;
+  if(g)h+=`<div class="mu sm" style="margin-top:4px">${isPP(x)?'Cada um seus pratos':'Dividir igual · '+R(t/hd)+' cada'}</div>`;
+  if(isPP(x))h+=Object.entries(x.per).map(([p,it])=>`<div class="row it sm"><span>${esc(p)} <span class="mu">· ${esc(itTxt(it))}</span></span><span>${R(tot(it))}</span></div>`).join('');
+  else h+=`<div class="sm" style="margin-top:6px">${esc(itTxt(x.items))}</div>${g?`<div class="mu sm">Integrantes: ${esc(joinE((x.members||[]).filter(m=>m.trim())))}</div>`:''}`;
+  h+=`${x.note?`<div class="mu sm" style="margin-top:4px">Obs: ${esc(x.note)}</div>`:''}<button class="btn dg" data-a="del" data-id="${x.id}">${I.trash} Excluir pedido</button></div>`});
+ return h+`<div class="bar"><button class="btn p" data-a="pdf">${I.file} Gerar PDF</button></div>`;
 }
 function loadMine(){const m=mineGet(S.sess.slug);S.sess.id=(m&&m.id)||S.sess.slug+'-'+(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36)).replace(/-/g,'').slice(0,12);S.sent=(m&&m.order)||null;S.pt=S.sent?'mine':'menu';
- if(m&&m.order){const d=m.order;S.cart=d.items||{};S.grp=d.mode=='grp';S.title=d.title||'';S.members=(d.members&&d.members.length)?d.members:[''];S.note=d.note||'';S.shared=d.shared||[];S.saved=true}}
+ if(m&&m.order){const d=m.order;S.cart=Object.assign({},d.items);S.grp=d.mode=='grp';S.split=d.split||'eq';S.title=d.title||'';S.members=(d.members&&d.members.length)?d.members.slice():[''];S.per=S.members.map(n=>Object.assign({},d.per&&d.per[n.trim()]));S.pi=0;S.note=d.note||'';S.saved=true;S.gopen=false}}
 function watch(){if(unsub)unsub();unsub=db.collection('orders').onSnapshot(s=>{S.err='';S.orders=s.docs.map(d=>Object.assign({id:d.id},d.data()));if(S.sess&&S.sess.role=='a'&&!document.activeElement.closest('input,textarea'))render()},e=>{S.err='Não foi possível ler os pedidos ('+((e&&e.code)||'erro')+').';if(S.sess&&S.sess.role=='a')render()})}
-$.addEventListener('input',e=>{const d=e.target.dataset,f=d.f;if(f=='title')S.title=e.target.value;else if(f=='who')S.who=e.target.value;else if(f=='note')S.note=e.target.value;else if(f=='mem')S.members[d.i]=e.target.value;else if(f=='jm')S.jd.members[d.i]=e.target.value});
+const noHash=()=>history.replaceState(null,'',location.pathname+location.search);
+async function copyTxt(t,c,sel){try{await navigator.clipboard.writeText(t);c.textContent='Copiado!'}catch(x){if(sel){const r=document.createRange();r.selectNodeContents(sel);getSelection().removeAllRanges();getSelection().addRange(r);c.textContent='Selecionado: copie com Ctrl+C'}else c.textContent=t}}
+addEventListener('hashchange',()=>{S.err='';render()});
+$.addEventListener('input',e=>{const d=e.target.dataset,f=d.f;if(e.target.id=='au')S.au=e.target.value;else if(f=='title')S.title=e.target.value;else if(f=='who')S.who=e.target.value;else if(f=='note')S.note=e.target.value;else if(f=='mem')S.members[d.i]=e.target.value});
 $.addEventListener('click',async e=>{const b=e.target.closest('[data-a]');if(!b)return;const d=b.dataset,a=d.a;
- if(a=='tab'){S.tab=d.v;S.err=''}
+ if(a=='home'){noHash();S.err=''}
+ else if(a=='spw'){const p=document.getElementById('pw');p.type=p.type=='password'?'text':'password';b.textContent=p.type=='password'?'Mostrar':'Ocultar';return}
  else if(a=='m0'){S.grp=d.v=='grp';S.err=''}
- else if(a=='go'){const name=S.who.trim(),sl=slug(name);if(!sl){S.err='Digite seu nome.';render();return}
-  S.sess={role:'p',slug:sl,name};loadMine();if(S.grp&&!S.members.some(m=>m.trim()))S.members=[name,''];S.err='';save()}
+ else if(a=='go'){const name=S.who.trim(),sl=slug(name);if(!sl){S.err='Escreva seu nome para continuar.';render();return}
+  S.sess={role:'p',slug:sl,name};S.gopen=true;loadMine();if(S.grp&&!S.members.some(m=>m.trim())){S.members=[name,''];S.per=[{},{}]}S.err='';save()}
  else if(a=='pt'){S.pt=d.v;S.err='';scrollTo(0,0)}
  else if(a=='edit'){S.pt='menu';S.sheet=true;S.err=''}
  else if(a=='ok'){S.conf=false;S.pt='mine';scrollTo(0,0)}
  else if(a=='cat'){S.cat=+d.v;scrollTo(0,0)}
- else if(a=='q'){if(+d.d<0&&(S.cart[d.id]||0)<=S.shared.filter(j=>j.id==d.id).length)return;S.cart[d.id]=(S.cart[d.id]||0)+ +d.d;if(S.cart[d.id]<=0)delete S.cart[d.id];if(!cnt(S.cart))S.sheet=false}
+ else if(a=='pi')S.pi=+d.v;
+ else if(a=='gopen')S.gopen=true;else if(a=='gclose')S.gopen=false;
+ else if(a=='q'){const dd=+d.d;
+  if(ppOn()){const k=d.m!=null?+d.m:S.pi,it=S.per[k]=S.per[k]||{};if(dd<0&&!it[d.id])return;it[d.id]=(it[d.id]||0)+dd;if(it[d.id]<=0)delete it[d.id]}
+  S.cart[d.id]=(S.cart[d.id]||0)+dd;if(S.cart[d.id]<=0)delete S.cart[d.id];if(!cnt(S.cart))S.sheet=false}
  else if(a=='sheet'){S.sheet=true;S.err=''}else if(a=='close')S.sheet=false;
- else if(a=='jt'){const ms=S.members.map(m=>m.trim()).filter(Boolean);S.jd={id:d.id,ms,sel:ms.map(()=>false),holder:-1};S.err=''}
- else if(a=='jx')S.jd=null;
- else if(a=='js'){S.jd.sel[+d.i]=!S.jd.sel[+d.i];if(!S.jd.sel[S.jd.holder])S.jd.holder=S.jd.sel.indexOf(true)}
- else if(a=='jh')S.jd.holder=+d.i;
- else if(a=='jok'){const j=S.jd,ls=j.ms.filter((_,i)=>j.sel[i]);if(ls.length<2){S.err='Marque ao menos 2 pessoas.';render();return}if(j.holder<0){S.err='Escolha o titular.';render();return}S.shared.push({id:j.id,members:ls,holder:ls.indexOf(j.ms[j.holder])});S.cart[j.id]=(S.cart[j.id]||0)+1;S.jd=null;S.err=''}
- else if(a=='jrm'){const j=S.shared.splice(+d.i,1)[0];S.cart[j.id]--;if(S.cart[j.id]<=0)delete S.cart[j.id];if(!cnt(S.cart))S.sheet=false}
- else if(a=='gr'){S.grp=true;S.err='';if(!S.members.some(m=>m.trim()))S.members=[S.sess.name,'']}
- else if(a=='solo'){if(S.shared.length&&!confirm('Os pratos divididos serão removidos da sacola. Continuar?'))return;clearShared();S.grp=false;S.err=''}
- else if(a=='mem')S.members.push('');
- else if(a=='memrm')S.members.splice(+d.i,1);
+ else if(a=='split'&&d.v!=S.split){S.per=S.members.map(()=>({}));if(d.v=='pp'){S.per[0]=Object.assign({},S.cart);S.pi=0}S.split=d.v;S.err=''}
+ else if(a=='mem'){S.members.push('');S.per.push({})}
+ else if(a=='memrm'){const i=+d.i,it=S.per[i]||{};if(cnt(it)&&!confirm('Os pratos dessa pessoa serão removidos da sacola. Continuar?'))return;
+  Object.entries(it).forEach(([id,q])=>{S.cart[id]-=q;if(S.cart[id]<=0)delete S.cart[id]});S.members.splice(i,1);S.per.splice(i,1);if(S.pi>=S.members.length)S.pi=S.members.length-1;if(!cnt(S.cart))S.sheet=false}
  else if(a=='out'){if(S.sess.role=='p'&&!S.saved&&cnt(S.cart)&&!confirm('Sua sacola ainda não foi enviada. Sair mesmo assim?'))return;
-  if(S.sess.role=='a'){if(unsub){unsub();unsub=null}if(window.TONHO_AUTH)try{await TONHO_AUTH.signOut()}catch(x){}}
-  S.sess=null;S.tab='p';S.sent=null;S.pt='menu';S.conf=false;S.sending=false;S.cart={};S.shared=[];S.saved=false;S.grp=false;S.title='';S.who='';S.members=[''];S.note='';S.err='';S.sheet=false;S.orders=[];try{sessionStorage.removeItem('s')}catch(x){}}
+  if(S.sess.role=='a'){if(unsub){unsub();unsub=null}if(window.TONHO_AUTH)try{await TONHO_AUTH.signOut()}catch(x){}noHash()}
+  S.sess=null;S.sent=null;S.pt='menu';S.conf=false;S.sending=false;S.cart={};S.saved=false;S.grp=false;S.split='eq';S.per=[{}];S.pi=0;S.gopen=true;S.title='';S.who='';S.au='';S.members=[''];S.note='';S.err='';S.sheet=false;S.orders=[];try{sessionStorage.removeItem('s')}catch(x){}}
  else if(a=='login'){S.err='';const u=document.getElementById('au').value.trim(),pw=document.getElementById('pw').value;
   if(!u||!pw){S.err='Informe usuário e senha.';render();return}
   try{if(window.TONHO_MODE=='online')await TONHO_AUTH.signInWithEmailAndPassword(slug(u)+'@almocotonho.app',pw);
    else if(await sha(slug(u)+':'+pw)!==ADMIN_HASH)throw{code:'bad'};
    S.sess={role:'a'};watch();save()}
-  catch(x){const c=(x&&x.code)||'';S.err=(c=='bad'||/auth\/(invalid|wrong|user-not)/.test(c))?'Usuário ou senha incorretos.':'Erro ao entrar'+(c?' ('+c+')':'')+'.'}}
- else if(a=='send'){if(S.sending)return;const ms=S.members.filter(m=>m.trim());
-  if(S.grp&&!ms.length){S.err='Informe as pessoas do grupo na tela inicial.';S.sheet=false;render();scrollTo(0,0);return}
-  const o={name:S.sess.name,mode:S.grp?'grp':'ind',title:'',members:S.grp?ms:[],items:S.cart,shared:S.shared,note:S.note,at:Date.now()},was=S.saved;
+  catch(x){const c=(x&&x.code)||'';S.err=(c=='bad'||/auth\/(invalid|wrong|user-not)/.test(c))?'Usuário ou senha incorretos. Confira e tente de novo.':'Erro ao entrar'+(c?' ('+c+')':'')+'.'}}
+ else if(a=='send'){if(S.sending)return;const ms=S.members.map(m=>m.trim());
+  if(S.grp&&!ms.some(Boolean)){S.err='Informe as pessoas do grupo.';S.sheet=false;S.gopen=true;render();scrollTo(0,0);return}
+  let per=null;if(ppOn()){per={};for(let i=0;i<ms.length;i++){if(!cnt(S.per[i]))continue;
+   if(!ms[i]){S.err='Digite o nome de todas as pessoas que têm pratos.';render();return}
+   if(per[ms[i]]){S.err='Há nomes repetidos no grupo: '+ms[i]+'.';render();return}per[ms[i]]=S.per[i]}}
+  const o=JSON.parse(JSON.stringify({name:S.sess.name,mode:S.grp?'grp':'ind',title:'',members:S.grp?ms.filter(Boolean):[],split:S.grp?S.split:null,items:S.cart,per,note:S.note,at:Date.now()})),was=S.saved;
   S.sending=true;S.err='';render();
   try{await Promise.race([db.collection('orders').doc(S.sess.id).set(o),new Promise((_,rj)=>setTimeout(()=>rj({code:'timeout'}),15000))]);
-   mineSet(S.sess.slug,{id:S.sess.id,order:o});S.sent=o;S.saved=true;S.upd=was;S.conf=true;S.sheet=false;S.err=''}
-  catch(x){const c=(x&&x.code)||'';S.err=c=='timeout'?'Sem resposta do servidor. Verifique a internet e toque em enviar de novo.':c=='permission-denied'?'Sem permissão para enviar (regras do Firebase). Avise o administrador.':'Não foi possível enviar'+(c?' ('+c+')':'')+'. Tente de novo.'}
+   mineSet(S.sess.slug,{id:S.sess.id,order:o});S.sent=o;S.saved=true;S.upd=was;S.conf=true;S.sheet=false;S.gopen=false;S.err=''}
+  catch(x){const c=(x&&x.code)||'';S.err=c=='timeout'?'O pedido não foi enviado, mas sua sacola está guardada. Verifique a internet e tente de novo.':c=='permission-denied'?'Sem permissão para enviar (regras do Firebase). Avise o organizador.':'Não foi possível enviar'+(c?' ('+c+')':'')+'. Tente de novo.'}
   S.sending=false}
  else if(a=='del'){if(confirm('Excluir este pedido?'))await db.collection('orders').doc(d.id).delete().catch(()=>{});return}
  else if(a=='pdf'){pdf();return}
- else if(a=='copy'){const t=summary(),c=document.getElementById('cp');try{await navigator.clipboard.writeText(t);c.textContent='Copiado!'}catch(x){const r=document.createRange();r.selectNodeContents(document.getElementById('sum'));getSelection().removeAllRanges();getSelection().addRange(r);c.textContent='Selecionado: copie com Ctrl+C'}return}
+ else if(a=='copy'){copyTxt(summary(),document.getElementById('cp'),document.getElementById('sum'));return}
+ else if(a=='clink'){copyTxt(location.origin+location.pathname,document.getElementById('cp'));return}
  render();
 });
 (async()=>{try{db=await claude.use('db');let s=null;try{s=JSON.parse(sessionStorage.getItem('s'))}catch(e){}
